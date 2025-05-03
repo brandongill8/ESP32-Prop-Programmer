@@ -3,131 +3,110 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Prop Programmer</title>
+  <title>ESP32 Prop Timeline Editor</title>
   <style>
     body {
-      background-color: #111;
-      color: #fff;
-      font-family: Arial, sans-serif;
+      background: black;
+      color: white;
+      font-family: sans-serif;
       margin: 0;
       padding: 0;
     }
     header {
       background: #222;
-      padding: 1rem;
+      padding: 10px;
       text-align: center;
-      font-size: 1.5rem;
     }
-    .section {
-      padding: 1rem;
-      border-bottom: 1px solid #333;
+    #timeline {
+      display: grid;
+      grid-template-columns: 80px repeat(60, 20px); /* 60 seconds timeline */
+      gap: 2px;
+      overflow-x: auto;
+      padding: 10px;
     }
-    label, input, button, select {
-      display: block;
-      margin: 0.5rem 0;
-      font-size: 1rem;
+    .track-label {
+      background: #333;
+      text-align: right;
+      padding-right: 10px;
     }
-    .timeline {
-      border: 1px solid #555;
-      margin-top: 1rem;
-      height: 100px;
-      position: relative;
-      background: #222;
+    .cell {
+      background: #444;
+      height: 30px;
+      cursor: pointer;
     }
-    .event {
-      position: absolute;
-      width: 10px;
-      height: 100%;
+    .cell.on {
       background: lime;
     }
-    .event::after {
-      content: attr(data-label);
-      position: absolute;
-      top: -1.5rem;
-      left: -5px;
-      background: #000;
-      padding: 0 5px;
-      font-size: 0.8rem;
-      white-space: nowrap;
+    #controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      padding: 10px;
+    }
+    audio {
+      width: 80%;
+      margin: 10px auto;
+      display: block;
     }
   </style>
 </head>
 <body>
-  <header>Prop Director Web</header>
+  <header>
+    <h1>Prop Director Timeline Editor</h1>
+  </header>
 
-  <div class="section">
-    <h2>1. Upload Audio</h2>
-    <label>Background Track (MP3): <input type="file" accept="audio/mp3" id="bgTrack"></label>
-    <label>Scare Track (MP3): <input type="file" accept="audio/mp3" id="scareTrack"></label>
-    <audio id="audioPlayer" controls style="margin-top: 1rem; display: none;"></audio>
-    <button onclick="playScare()">Preview Scare Track</button>
+  <div id="controls">
+    <input type="file" id="audioUpload" accept="audio/*">
+    <button onclick="playTimeline()">Play Preview</button>
   </div>
 
-  <div class="section">
-    <h2>2. Inputs and Outputs</h2>
-    <label>Trigger Input Pin: <input type="number" id="inputPin" value="13"></label>
-    <label>Output Pins (comma-separated): <input type="text" id="outputPins" value="16,17,18,19"></label>
-  </div>
+  <audio id="audio" controls></audio>
 
-  <div class="section">
-    <h2>3. Timeline Editor</h2>
-    <label>Output Label: <input type="text" id="outputLabel" placeholder="e.g. Strobe"></label>
-    <div id="timeline" class="timeline"></div>
-    <button onclick="addEvent()">Add Output Event</button>
-  </div>
-
-  <div class="section">
-    <h2>4. Export Files</h2>
-    <button onclick="exportConfig()">Download Config</button>
-  </div>
+  <div id="timeline"></div>
 
   <script>
-    const timeline = document.getElementById('timeline');
-    const audioPlayer = document.getElementById('audioPlayer');
-    const scareTrackInput = document.getElementById('scareTrack');
+    const timeline = document.getElementById("timeline");
+    const outputs = ["Output 1", "Output 2", "Output 3", "Output 4"];
+    const numSeconds = 60;
 
-    scareTrackInput.addEventListener('change', function() {
-      if (this.files[0]) {
-        const url = URL.createObjectURL(this.files[0]);
-        audioPlayer.src = url;
-        audioPlayer.style.display = 'block';
+    outputs.forEach((label, row) => {
+      timeline.appendChild(makeLabel(label));
+      for (let t = 0; t < numSeconds; t++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.row = row;
+        cell.dataset.time = t;
+        cell.onclick = () => cell.classList.toggle("on");
+        timeline.appendChild(cell);
       }
     });
 
-    function playScare() {
-      if (audioPlayer.src) {
-        audioPlayer.currentTime = 0;
-        audioPlayer.play();
-      } else {
-        alert("Please upload a scare track first.");
+    function makeLabel(text) {
+      const label = document.createElement("div");
+      label.className = "track-label";
+      label.textContent = text;
+      return label;
+    }
+
+    const audio = document.getElementById("audio");
+    document.getElementById("audioUpload").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (file) {
+        audio.src = URL.createObjectURL(file);
       }
-    }
+    });
 
-    function addEvent() {
-      const label = document.getElementById('outputLabel').value || 'Output';
-      const event = document.createElement('div');
-      event.className = 'event';
-      event.style.left = Math.random() * 90 + '%';
-      event.dataset.label = label;
-      timeline.appendChild(event);
-    }
+    function playTimeline() {
+      const activeCells = document.querySelectorAll(".cell.on");
+      const timelineData = Array.from(activeCells).map(cell => ({
+        row: parseInt(cell.dataset.row),
+        time: parseInt(cell.dataset.time)
+      }));
 
-    function exportConfig() {
-      const inputPin = document.getElementById('inputPin').value;
-      const outputPins = document.getElementById('outputPins').value.split(',').map(p => parseInt(p.trim()));
-      const events = [...timeline.querySelectorAll('.event')].map(e => {
-        return { time: parseFloat(e.style.left), label: e.dataset.label };
-      });
-      const config = {
-        inputPin,
-        outputPins,
-        events
-      };
-      const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'config.json';
-      a.click();
+      console.log("Previewing:", timelineData);
+      audio.currentTime = 0;
+      audio.play();
+      // Optional: Visual playback marker or simulate outputs
     }
   </script>
 </body>
