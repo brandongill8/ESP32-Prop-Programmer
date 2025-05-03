@@ -22,6 +22,11 @@
       position: relative;
       padding: 10px;
     }
+    .timeline-wrapper {
+      display: block;
+      position: relative;
+      min-width: 100%;
+    }
     .time-ruler {
       display: flex;
       color: #aaa;
@@ -30,9 +35,6 @@
     }
     .time-ruler div {
       text-align: center;
-    }
-    #waveformContainer {
-      position: relative;
     }
     canvas#waveform {
       display: block;
@@ -100,19 +102,17 @@
     <br>
     <label>Background Track: <input type="file" id="bgUpload" accept="audio/*"></label>
     <label>Scare Track: <input type="file" id="audioUpload" accept="audio/*"></label>
-    <button onclick="playTimeline()">Play Preview</button>
+    <button onclick="playTimeline()">Play</button>
     <audio id="audio" controls></audio>
   </div>
 
   <div class="editor-container" id="editorContainer">
-    <div class="playhead" id="playhead"></div>
-    <div class="time-ruler" id="timeRuler"></div>
-
-    <div id="waveformContainer">
+    <div class="timeline-wrapper" id="timelineWrapper">
+      <div class="playhead" id="playhead"></div>
+      <div class="time-ruler" id="timeRuler"></div>
       <canvas id="waveform" height="100"></canvas>
+      <div id="tracks"></div>
     </div>
-
-    <div id="tracks"></div>
   </div>
 
   <script>
@@ -135,12 +135,14 @@
     const playhead = document.getElementById('playhead');
     const inputPinDropdown = document.getElementById('inputPin');
     const ruler = document.getElementById('timeRuler');
+    const timelineWrapper = document.getElementById('timelineWrapper');
 
     function setTimelineDuration(seconds) {
       numSeconds = seconds;
       const width = Math.ceil(numSeconds * pxPerSecond);
       waveform.width = width;
       ruler.innerHTML = '';
+      ruler.style.width = `${width}px`;
       for (let i = 0; i <= numSeconds; i += 5) {
         const tick = document.createElement('div');
         tick.textContent = `${i}s`;
@@ -148,7 +150,7 @@
         ruler.appendChild(tick);
       }
       tracksDiv.innerHTML = '';
-      drawOutputTracks();
+      drawOutputTracks(width);
     }
 
     function populateDropdown(dropdown, selectedPin) {
@@ -180,7 +182,7 @@
       populateDropdown(inputPinDropdown, inputPin);
     }
 
-    function drawOutputTracks() {
+    function drawOutputTracks(width) {
       outputs.forEach((output, index) => {
         const row = document.createElement('div');
         row.className = 'track';
@@ -201,7 +203,7 @@
 
         const timeline = document.createElement('div');
         timeline.className = 'track-timeline';
-        timeline.style.width = `${waveform.width}px`;
+        timeline.style.width = `${width}px`;
         timeline.dataset.index = index;
 
         let startX = null;
