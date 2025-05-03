@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Prop Director</title>
+  <title>Prop Director Timeline Editor</title>
   <style>
     body {
       background-color: #000;
@@ -17,20 +17,45 @@
       padding: 10px;
       text-align: center;
     }
-    .channel {
-      margin: 10px;
-      padding: 10px;
-      background: #111;
-      border: 1px solid #444;
-    }
-    .channel label {
-      margin-right: 10px;
-    }
-    .timeline-track {
+    .editor-container {
+      overflow-x: auto;
       position: relative;
+      padding: 10px;
+    }
+    .time-ruler {
+      display: flex;
+      color: #aaa;
+      font-size: 0.75rem;
+      margin-bottom: 4px;
+    }
+    .time-ruler div {
+      width: 50px;
+      text-align: center;
+    }
+    canvas#waveform {
+      width: 100%;
+      max-width: 2000px;
+      height: 100px;
+      background: #111;
+      margin: 0 auto 10px auto;
+      display: block;
+    }
+    .track {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .track-label {
+      width: 100px;
+      text-align: right;
+      padding-right: 10px;
+      font-size: 0.9rem;
+    }
+    .track-timeline {
+      position: relative;
+      flex: 1;
       height: 30px;
       background: #333;
-      margin-top: 10px;
       cursor: crosshair;
     }
     .segment {
@@ -39,27 +64,14 @@
       bottom: 0;
       background: lime;
     }
-    #controls, #audioSection {
-      padding: 10px;
+    #controls {
       text-align: center;
-    }
-    #inputLabelEditor {
       padding: 10px;
-      background: #111;
     }
-    input[type="text"], input[type="number"] {
-      background: #222;
-      color: #fff;
-      border: 1px solid #555;
-      padding: 2px 6px;
-    }
-    canvas#waveform {
+    #audio {
       display: block;
-      width: 100%;
-      max-width: 1000px;
-      height: 100px;
-      background: #111;
       margin: 10px auto;
+      width: 90%;
     }
   </style>
 </head>
@@ -68,84 +80,82 @@
     <h1>Prop Director Timeline Editor</h1>
   </header>
 
-  <div id="inputLabelEditor">
-    Trigger Input Label:
-    <input type="text" id="inputLabel" value="Trigger Sensor" onchange="updateInputLabel(this.value)">
-  </div>
-
   <div id="controls">
-    <label>Background Track:
-      <input type="file" id="bgUpload" accept="audio/*">
-    </label>
-    <label>Scare Track:
-      <input type="file" id="audioUpload" accept="audio/*">
-    </label>
-    <button onclick="playTimeline()">Play Scare Preview</button>
-  </div>
-
-  <div id="audioSection">
-    <canvas id="waveform" width="1000" height="100"></canvas>
+    <label>Background Track: <input type="file" id="bgUpload" accept="audio/*"></label>
+    <label>Scare Track: <input type="file" id="audioUpload" accept="audio/*"></label>
+    <button onclick="playTimeline()">Play Preview</button>
     <audio id="audio" controls></audio>
   </div>
 
-  <div id="channels"></div>
+  <div class="editor-container">
+    <div class="time-ruler" id="timeRuler"></div>
+    <canvas id="waveform" width="2000" height="100"></canvas>
+    <div id="tracks"></div>
+  </div>
 
   <script>
-    const outputData = [
-      { label: 'Output 1', pin: 16, segments: [] },
-      { label: 'Output 2', pin: 17, segments: [] },
-      { label: 'Output 3', pin: 18, segments: [] },
-      { label: 'Output 4', pin: 19, segments: [] }
+    const outputs = [
+      { label: 'Output 1', segments: [] },
+      { label: 'Output 2', segments: [] },
+      { label: 'Output 3', segments: [] },
+      { label: 'Output 4', segments: [] }
     ];
 
+    const waveform = document.getElementById('waveform');
+    const ctx = waveform.getContext('2d');
+    const audio = document.getElementById('audio');
+    const tracksDiv = document.getElementById('tracks');
     const numSeconds = 60;
-    const pxPerSecond = 10;
-    const trackWidth = numSeconds * pxPerSecond;
-    const channelsContainer = document.getElementById('channels');
+    const pxPerSecond = 50;
 
-    outputData.forEach((output, index) => {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'channel';
+    // Build time ruler
+    const ruler = document.getElementById('timeRuler');
+    for (let i = 0; i <= numSeconds; i += 5) {
+      const tick = document.createElement('div');
+      tick.textContent = `${i}s`;
+      tick.style.width = `${pxPerSecond * 5}px`;
+      ruler.appendChild(tick);
+    }
 
-      const labelInput = `<label>Label: <input type="text" value="${output.label}" onchange="outputData[${index}].label = this.value"></label>`;
-      const pinInput = `<label>Pin: <input type="number" value="${output.pin}" onchange="outputData[${index}].pin = parseInt(this.value)"></label>`;
+    // Draw output tracks
+    outputs.forEach((output, index) => {
+      const row = document.createElement('div');
+      row.className = 'track';
 
-      const track = document.createElement('div');
-      track.className = 'timeline-track';
-      track.style.width = `${trackWidth}px`;
-      track.dataset.index = index;
+      const label = document.createElement('div');
+      label.className = 'track-label';
+      label.textContent = output.label;
+
+      const timeline = document.createElement('div');
+      timeline.className = 'track-timeline';
+      timeline.style.width = `${numSeconds * pxPerSecond}px`;
+      timeline.dataset.index = index;
 
       let startX = null;
-      track.onmousedown = (e) => {
-        const rect = track.getBoundingClientRect();
-        startX = e.clientX - rect.left;
+      timeline.onmousedown = (e) => {
+        startX = e.offsetX;
       };
-      track.onmouseup = (e) => {
+      timeline.onmouseup = (e) => {
         if (startX === null) return;
-        const rect = track.getBoundingClientRect();
-        const endX = e.clientX - rect.left;
-        const [x1, x2] = [startX, endX].sort((a, b) => a - b);
+        const x1 = Math.min(startX, e.offsetX);
+        const x2 = Math.max(startX, e.offsetX);
         const seg = document.createElement('div');
         seg.className = 'segment';
         seg.style.left = `${x1}px`;
         seg.style.width = `${x2 - x1}px`;
-        track.appendChild(seg);
-
+        timeline.appendChild(seg);
         const startTime = Math.round(x1 / pxPerSecond);
         const endTime = Math.round(x2 / pxPerSecond);
-        outputData[index].segments.push({ start: startTime, end: endTime });
+        outputs[index].segments.push({ start: startTime, end: endTime });
         startX = null;
       };
 
-      wrapper.innerHTML = labelInput + pinInput;
-      wrapper.appendChild(track);
-      channelsContainer.appendChild(wrapper);
+      row.appendChild(label);
+      row.appendChild(timeline);
+      tracksDiv.appendChild(row);
     });
 
-    const audio = document.getElementById('audio');
-    const waveform = document.getElementById('waveform');
-    const ctx = waveform.getContext('2d');
-
+    // Audio + waveform logic
     document.getElementById('audioUpload').addEventListener('change', function (e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -164,7 +174,7 @@
           const blockSize = Math.floor(rawData.length / samples);
           const height = waveform.height;
 
-          ctx.clearRect(0, 0, waveform.width, height);
+          ctx.clearRect(0, 0, samples, height);
           ctx.fillStyle = '#0f0';
 
           for (let i = 0; i < samples; i++) {
@@ -172,11 +182,11 @@
             for (let j = 0; j < blockSize; j++) {
               sum += Math.abs(rawData[i * blockSize + j]);
             }
-            const average = sum / blockSize;
-            const barHeight = average * height;
+            const avg = sum / blockSize;
+            const barHeight = avg * height;
             ctx.fillRect(i, (height - barHeight) / 2, 1, barHeight);
           }
-        }).catch(err => console.error('decodeAudioData error:', err));
+        });
       };
       reader.readAsArrayBuffer(file);
     }
@@ -184,11 +194,6 @@
     function playTimeline() {
       audio.currentTime = 0;
       audio.play();
-      console.log('Scare track playback started.');
-    }
-
-    function updateInputLabel(val) {
-      console.log('Input label updated:', val);
     }
   </script>
 </body>
