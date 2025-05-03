@@ -32,13 +32,21 @@
       width: 50px;
       text-align: center;
     }
+    #waveformContainer {
+      position: relative;
+    }
     canvas#waveform {
-      width: 100%;
-      max-width: 2000px;
-      height: 100px;
-      background: #111;
-      margin: 0 auto 10px auto;
       display: block;
+      background: #111;
+    }
+    .playhead {
+      position: absolute;
+      top: 0;
+      width: 2px;
+      background: red;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
     }
     .track {
       display: flex;
@@ -87,9 +95,14 @@
     <audio id="audio" controls></audio>
   </div>
 
-  <div class="editor-container">
+  <div class="editor-container" id="editorContainer">
+    <div class="playhead" id="playhead"></div>
     <div class="time-ruler" id="timeRuler"></div>
-    <canvas id="waveform" width="2000" height="100"></canvas>
+
+    <div id="waveformContainer">
+      <canvas id="waveform" width="3000" height="100"></canvas>
+    </div>
+
     <div id="tracks"></div>
   </div>
 
@@ -105,8 +118,13 @@
     const ctx = waveform.getContext('2d');
     const audio = document.getElementById('audio');
     const tracksDiv = document.getElementById('tracks');
+    const playhead = document.getElementById('playhead');
+    const editorContainer = document.getElementById('editorContainer');
+
     const numSeconds = 60;
     const pxPerSecond = 50;
+    const waveformWidth = numSeconds * pxPerSecond;
+    waveform.width = waveformWidth;
 
     // Build time ruler
     const ruler = document.getElementById('timeRuler');
@@ -128,7 +146,7 @@
 
       const timeline = document.createElement('div');
       timeline.className = 'track-timeline';
-      timeline.style.width = `${numSeconds * pxPerSecond}px`;
+      timeline.style.width = `${waveformWidth}px`;
       timeline.dataset.index = index;
 
       let startX = null;
@@ -194,6 +212,21 @@
     function playTimeline() {
       audio.currentTime = 0;
       audio.play();
+
+      const start = performance.now();
+      const totalDuration = audio.duration || 60;
+
+      const update = (now) => {
+        const elapsed = (now - start) / 1000;
+        const position = elapsed * pxPerSecond;
+        playhead.style.left = `${position}px`;
+
+        if (!audio.paused && !audio.ended) {
+          requestAnimationFrame(update);
+        }
+      };
+
+      requestAnimationFrame(update);
     }
   </script>
 </body>
