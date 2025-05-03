@@ -29,7 +29,6 @@
       margin-bottom: 4px;
     }
     .time-ruler div {
-      width: 50px;
       text-align: center;
     }
     #waveformContainer {
@@ -81,7 +80,7 @@
       margin: 10px auto;
       width: 90%;
     }
-    select {
+    select, input[type="text"] {
       background: #222;
       color: white;
       border: 1px solid #555;
@@ -110,7 +109,7 @@
     <div class="time-ruler" id="timeRuler"></div>
 
     <div id="waveformContainer">
-      <canvas id="waveform" width="3000" height="100"></canvas>
+      <canvas id="waveform" height="100"></canvas>
     </div>
 
     <div id="tracks"></div>
@@ -119,6 +118,8 @@
   <script>
     const gpioOptions = [4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33];
     let usedPins = new Set();
+    let numSeconds = 60;
+    let pxPerSecond = 50;
 
     const outputs = [
       { label: 'Output 1', pin: null, segments: [] },
@@ -133,10 +134,22 @@
     const tracksDiv = document.getElementById('tracks');
     const playhead = document.getElementById('playhead');
     const inputPinDropdown = document.getElementById('inputPin');
-    const numSeconds = 60;
-    const pxPerSecond = 50;
-    const waveformWidth = numSeconds * pxPerSecond;
-    waveform.width = waveformWidth;
+    const ruler = document.getElementById('timeRuler');
+
+    function setTimelineDuration(seconds) {
+      numSeconds = seconds;
+      const width = Math.ceil(numSeconds * pxPerSecond);
+      waveform.width = width;
+      ruler.innerHTML = '';
+      for (let i = 0; i <= numSeconds; i += 5) {
+        const tick = document.createElement('div');
+        tick.textContent = `${i}s`;
+        tick.style.width = `${pxPerSecond * 5}px`;
+        ruler.appendChild(tick);
+      }
+      tracksDiv.innerHTML = '';
+      drawOutputTracks();
+    }
 
     function populateDropdown(dropdown, selectedPin) {
       dropdown.innerHTML = '<option value="">-- Select Pin --</option>';
@@ -150,7 +163,6 @@
       });
     }
 
-    // Setup input pin dropdown
     let inputPin = null;
     populateDropdown(inputPinDropdown, inputPin);
     inputPinDropdown.addEventListener('change', (e) => {
@@ -160,15 +172,6 @@
       refreshAllDropdowns();
     });
 
-    // Build time ruler
-    const ruler = document.getElementById('timeRuler');
-    for (let i = 0; i <= numSeconds; i += 5) {
-      const tick = document.createElement('div');
-      tick.textContent = `${i}s`;
-      tick.style.width = `${pxPerSecond * 5}px`;
-      ruler.appendChild(tick);
-    }
-
     function refreshAllDropdowns() {
       document.querySelectorAll('.pin-select').forEach((dropdown, index) => {
         const current = outputs[index].pin;
@@ -177,87 +180,90 @@
       populateDropdown(inputPinDropdown, inputPin);
     }
 
-    outputs.forEach((output, index) => {
-      const row = document.createElement('div');
-      row.className = 'track';
+    function drawOutputTracks() {
+      outputs.forEach((output, index) => {
+        const row = document.createElement('div');
+        row.className = 'track';
 
-      const label = document.createElement('div');
-      label.className = 'track-label';
-      label.textContent = output.label;
+        const labelWrapper = document.createElement('div');
+        labelWrapper.className = 'track-label';
+        labelWrapper.innerHTML = `<input type="text" value="${output.label}" onchange="outputs[${index}].label = this.value">`;
 
-      const pinDropdown = document.createElement('select');
-      pinDropdown.className = 'pin-select';
-      populateDropdown(pinDropdown, null);
-      pinDropdown.addEventListener('change', function () {
-        if (outputs[index].pin) usedPins.delete(outputs[index].pin);
-        outputs[index].pin = parseInt(this.value);
-        usedPins.add(outputs[index].pin);
-        refreshAllDropdowns();
+        const pinDropdown = document.createElement('select');
+        pinDropdown.className = 'pin-select';
+        populateDropdown(pinDropdown, output.pin);
+        pinDropdown.addEventListener('change', function () {
+          if (outputs[index].pin) usedPins.delete(outputs[index].pin);
+          outputs[index].pin = parseInt(this.value);
+          usedPins.add(outputs[index].pin);
+          refreshAllDropdowns();
+        });
+
+        const timeline = document.createElement('div');
+        timeline.className = 'track-timeline';
+        timeline.style.width = `${waveform.width}px`;
+        timeline.dataset.index = index;
+
+        let startX = null;
+        timeline.onmousedown = (e) => {
+          startX = e.offsetX;
+        };
+        timeline.onmouseup = (e) => {
+          if (startX === null) return;
+          const x1 = Math.min(startX, e.offsetX);
+          const x2 = Math.max(startX, e.offsetX);
+          const seg = document.createElement('div');
+          seg.className = 'segment';
+          seg.style.left = `${x1}px`;
+          seg.style.width = `${x2 - x1}px`;
+          timeline.appendChild(seg);
+          const startTime = Math.round(x1 / pxPerSecond);
+          const endTime = Math.round(x2 / pxPerSecond);
+          outputs[index].segments.push({ start: startTime, end: endTime });
+          startX = null;
+        };
+
+        row.appendChild(labelWrapper);
+        row.appendChild(pinDropdown);
+        row.appendChild(timeline);
+        tracksDiv.appendChild(row);
       });
-
-      const timeline = document.createElement('div');
-      timeline.className = 'track-timeline';
-      timeline.style.width = `${waveformWidth}px`;
-      timeline.dataset.index = index;
-
-      let startX = null;
-      timeline.onmousedown = (e) => {
-        startX = e.offsetX;
-      };
-      timeline.onmouseup = (e) => {
-        if (startX === null) return;
-        const x1 = Math.min(startX, e.offsetX);
-        const x2 = Math.max(startX, e.offsetX);
-        const seg = document.createElement('div');
-        seg.className = 'segment';
-        seg.style.left = `${x1}px`;
-        seg.style.width = `${x2 - x1}px`;
-        timeline.appendChild(seg);
-        const startTime = Math.round(x1 / pxPerSecond);
-        const endTime = Math.round(x2 / pxPerSecond);
-        outputs[index].segments.push({ start: startTime, end: endTime });
-        startX = null;
-      };
-
-      row.appendChild(label);
-      row.appendChild(pinDropdown);
-      row.appendChild(timeline);
-      tracksDiv.appendChild(row);
-    });
+    }
 
     document.getElementById('audioUpload').addEventListener('change', function (e) {
       const file = e.target.files[0];
       if (!file) return;
       const url = URL.createObjectURL(file);
       audio.src = url;
-      drawWaveform(file);
-    });
-
-    function drawWaveform(file) {
       const audioCtx = new AudioContext();
       const reader = new FileReader();
-      reader.onload = function (e) {
-        audioCtx.decodeAudioData(e.target.result).then(buffer => {
-          const rawData = buffer.getChannelData(0);
-          const samples = waveform.width;
-          const blockSize = Math.floor(rawData.length / samples);
-          const height = waveform.height;
-
-          ctx.clearRect(0, 0, samples, height);
-          ctx.fillStyle = '#0f0';
-
-          for (let i = 0; i < samples; i++) {
-            let sum = 0;
-            for (let j = 0; j < blockSize; j++) {
-              sum += Math.abs(rawData[i * blockSize + j]);
-            }
-            const avg = sum / blockSize;
-            const barHeight = avg * height;
-            ctx.fillRect(i, (height - barHeight) / 2, 1, barHeight);
-          }
+      reader.onload = function (event) {
+        audioCtx.decodeAudioData(event.target.result).then(buffer => {
+          setTimelineDuration(buffer.duration);
+          drawWaveform(buffer);
         });
       };
       reader.readAsArrayBuffer(file);
+    });
+
+    function drawWaveform(buffer) {
+      const rawData = buffer.getChannelData(0);
+      const samples = waveform.width;
+      const blockSize = Math.floor(rawData.length / samples);
+      const height = waveform.height;
+
+      ctx.clearRect(0, 0, samples, height);
+      ctx.fillStyle = '#0f0';
+
+      for (let i = 0; i < samples; i++) {
+        let sum = 0;
+        for (let j = 0; j < blockSize; j++) {
+          sum += Math.abs(rawData[i * blockSize + j]);
+        }
+        const avg = sum / blockSize;
+        const barHeight = avg * height;
+        ctx.fillRect(i, (height - barHeight) / 2, 1, barHeight);
+      }
     }
 
     function playTimeline() {
