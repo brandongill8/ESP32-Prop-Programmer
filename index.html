@@ -56,9 +56,10 @@
     canvas#waveform {
       display: block;
       width: 100%;
+      max-width: 1000px;
       height: 100px;
       background: #111;
-      margin-bottom: 10px;
+      margin: 10px auto;
     }
   </style>
 </head>
@@ -83,7 +84,7 @@
   </div>
 
   <div id="audioSection">
-    <canvas id="waveform"></canvas>
+    <canvas id="waveform" width="1000" height="100"></canvas>
     <audio id="audio" controls></audio>
   </div>
 
@@ -159,17 +160,23 @@
       reader.onload = function (e) {
         audioCtx.decodeAudioData(e.target.result).then(buffer => {
           const rawData = buffer.getChannelData(0);
-          const step = Math.floor(rawData.length / waveform.width);
+          const samples = waveform.width;
+          const blockSize = Math.floor(rawData.length / samples);
           const height = waveform.height;
+
           ctx.clearRect(0, 0, waveform.width, height);
-          for (let i = 0; i < waveform.width; i++) {
-            const slice = rawData.slice(i * step, (i + 1) * step);
-            const max = Math.max(...slice.map(Math.abs));
-            const y = max * height;
-            ctx.fillStyle = '#0f0';
-            ctx.fillRect(i, (height - y) / 2, 1, y);
+          ctx.fillStyle = '#0f0';
+
+          for (let i = 0; i < samples; i++) {
+            let sum = 0;
+            for (let j = 0; j < blockSize; j++) {
+              sum += Math.abs(rawData[i * blockSize + j]);
+            }
+            const average = sum / blockSize;
+            const barHeight = average * height;
+            ctx.fillRect(i, (height - barHeight) / 2, 1, barHeight);
           }
-        });
+        }).catch(err => console.error('decodeAudioData error:', err));
       };
       reader.readAsArrayBuffer(file);
     }
