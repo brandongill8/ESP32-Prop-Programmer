@@ -52,6 +52,7 @@
       height: 100%;
       pointer-events: none;
       z-index: 10;
+      left: 150px; /* starts aligned with the waveform */
     }
     .track {
       display: flex;
@@ -121,7 +122,6 @@
   </div>
 
   <div class="editor-container" id="editorContainer">
-    <div class="playhead" id="playhead"></div>
     <div class="timeline-wrapper" id="timelineWrapper">
       <div></div>
       <div class="time-ruler" id="timeRuler"></div>
@@ -129,6 +129,7 @@
       <canvas id="waveform"></canvas>
       <div id="labels"></div>
       <div id="tracks"></div>
+      <div class="playhead" id="playhead"></div>
     </div>
   </div>
 
@@ -138,6 +139,7 @@
     let numSeconds = 60;
     let pxPerSecond = 50;
     let animationFrame = null;
+    let currentBuffer = null;
 
     const outputs = [
       { label: 'Output 1', pin: null, segments: [] },
@@ -173,6 +175,7 @@
         ruler.appendChild(tick);
       }
       drawOutputTracks(width);
+      if (currentBuffer) drawWaveform(currentBuffer);
     }
 
     function populateDropdown(dropdown, selectedPin) {
@@ -262,6 +265,7 @@
       const reader = new FileReader();
       reader.onload = function (event) {
         audioCtx.decodeAudioData(event.target.result).then(buffer => {
+          currentBuffer = buffer;
           setTimelineDuration(buffer.duration);
           drawWaveform(buffer);
         });
@@ -303,13 +307,13 @@
     function resetTimeline() {
       stopTimeline();
       audio.currentTime = 0;
-      playhead.style.left = '0px';
+      playhead.style.left = '150px';
     }
 
     function updatePlayhead() {
       animationFrame = requestAnimationFrame(function step() {
         const position = audio.currentTime * pxPerSecond;
-        playhead.style.left = `${position}px`;
+        playhead.style.left = `${150 + position}px`;
         if (!audio.paused && !audio.ended) {
           animationFrame = requestAnimationFrame(step);
         }
