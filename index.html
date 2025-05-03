@@ -17,17 +17,25 @@
       padding: 10px;
       text-align: center;
     }
-    #timeline {
+    .output-block {
+      border: 1px solid #555;
+      margin: 10px;
+      padding: 10px;
+      background: #111;
+    }
+    .output-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .timeline {
       display: grid;
-      grid-template-columns: 80px repeat(60, 20px); /* 60 seconds timeline */
+      grid-template-columns: repeat(60, 20px);
       gap: 2px;
       overflow-x: auto;
-      padding: 10px;
-    }
-    .track-label {
-      background: #333;
-      text-align: right;
-      padding-right: 10px;
+      padding-bottom: 5px;
     }
     .cell {
       background: #444;
@@ -48,12 +56,24 @@
       margin: 10px auto;
       display: block;
     }
+    .config-panel {
+      padding: 10px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #333;
+    }
+    label {
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Prop Director Timeline Editor</h1>
   </header>
+
+  <div class="config-panel">
+    <label>Trigger Input Label: <input type="text" id="inputLabel" value="Trigger Sensor"></label>
+  </div>
 
   <div id="controls">
     <input type="file" id="audioUpload" accept="audio/*">
@@ -62,31 +82,47 @@
 
   <audio id="audio" controls></audio>
 
-  <div id="timeline"></div>
+  <div id="outputs"></div>
 
   <script>
-    const timeline = document.getElementById("timeline");
-    const outputs = ["Output 1", "Output 2", "Output 3", "Output 4"];
-    const numSeconds = 60;
+    const outputs = [
+      { label: "Output 1", pin: 16 },
+      { label: "Output 2", pin: 17 },
+      { label: "Output 3", pin: 18 },
+      { label: "Output 4", pin: 19 },
+    ];
 
-    outputs.forEach((label, row) => {
-      timeline.appendChild(makeLabel(label));
+    const numSeconds = 60;
+    const outputsContainer = document.getElementById("outputs");
+
+    outputs.forEach((output, rowIndex) => {
+      const block = document.createElement("div");
+      block.className = "output-block";
+
+      const header = document.createElement("div");
+      header.className = "output-header";
+      header.innerHTML = `
+        <label>Label: <input type="text" value="${output.label}" onchange="outputs[${rowIndex}].label = this.value"></label>
+        <label>Pin: <input type="number" value="${output.pin}" onchange="outputs[${rowIndex}].pin = parseInt(this.value)"></label>
+      `;
+
+      const timeline = document.createElement("div");
+      timeline.className = "timeline";
+      timeline.dataset.index = rowIndex;
+      
       for (let t = 0; t < numSeconds; t++) {
         const cell = document.createElement("div");
         cell.className = "cell";
-        cell.dataset.row = row;
+        cell.dataset.row = rowIndex;
         cell.dataset.time = t;
         cell.onclick = () => cell.classList.toggle("on");
         timeline.appendChild(cell);
       }
-    });
 
-    function makeLabel(text) {
-      const label = document.createElement("div");
-      label.className = "track-label";
-      label.textContent = text;
-      return label;
-    }
+      block.appendChild(header);
+      block.appendChild(timeline);
+      outputsContainer.appendChild(block);
+    });
 
     const audio = document.getElementById("audio");
     document.getElementById("audioUpload").addEventListener("change", function (e) {
@@ -99,14 +135,13 @@
     function playTimeline() {
       const activeCells = document.querySelectorAll(".cell.on");
       const timelineData = Array.from(activeCells).map(cell => ({
-        row: parseInt(cell.dataset.row),
+        output: parseInt(cell.dataset.row),
         time: parseInt(cell.dataset.time)
       }));
 
       console.log("Previewing:", timelineData);
       audio.currentTime = 0;
       audio.play();
-      // Optional: Visual playback marker or simulate outputs
     }
   </script>
 </body>
