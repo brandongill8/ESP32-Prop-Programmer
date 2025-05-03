@@ -1,68 +1,60 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ESP32 Prop Timeline Editor</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prop Director</title>
   <style>
     body {
-      background: black;
-      color: white;
+      background-color: #000;
+      color: #fff;
       font-family: sans-serif;
       margin: 0;
       padding: 0;
     }
     header {
-      background: #222;
+      background: #111;
       padding: 10px;
       text-align: center;
     }
-    .output-block {
-      border: 1px solid #555;
+    .channel {
       margin: 10px;
       padding: 10px;
       background: #111;
+      border: 1px solid #444;
     }
-    .output-header {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: center;
-      margin-bottom: 10px;
+    .channel label {
+      margin-right: 10px;
     }
     .timeline {
       display: grid;
-      grid-template-columns: repeat(60, 20px);
+      grid-template-columns: repeat(60, 10px);
       gap: 2px;
+      margin-top: 10px;
       overflow-x: auto;
-      padding-bottom: 5px;
     }
     .cell {
-      background: #444;
-      height: 30px;
+      width: 10px;
+      height: 20px;
+      background: #333;
       cursor: pointer;
     }
     .cell.on {
       background: lime;
     }
-    #controls {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
+    #controls, #audioSection {
       padding: 10px;
+      text-align: center;
     }
-    audio {
-      width: 80%;
-      margin: 10px auto;
-      display: block;
-    }
-    .config-panel {
+    #inputLabelEditor {
       padding: 10px;
-      background: #1a1a1a;
-      border-bottom: 1px solid #333;
+      background: #111;
     }
-    label {
-      margin-right: 10px;
+    input[type="text"], input[type="number"] {
+      background: #222;
+      color: #fff;
+      border: 1px solid #555;
+      padding: 2px 6px;
     }
   </style>
 </head>
@@ -71,61 +63,57 @@
     <h1>Prop Director Timeline Editor</h1>
   </header>
 
-  <div class="config-panel">
-    <label>Trigger Input Label: <input type="text" id="inputLabel" value="Trigger Sensor"></label>
+  <div id="inputLabelEditor">
+    Trigger Input Label:
+    <input type="text" id="inputLabel" value="Trigger Sensor" onchange="updateInputLabel(this.value)">
   </div>
 
   <div id="controls">
     <input type="file" id="audioUpload" accept="audio/*">
-    <button onclick="playTimeline()">Play Preview</button>
+    <button onclick="playTimeline()">Play Timeline</button>
   </div>
 
-  <audio id="audio" controls></audio>
+  <div id="audioSection">
+    <audio id="audio" controls></audio>
+  </div>
 
-  <div id="outputs"></div>
+  <div id="channels"></div>
 
   <script>
-    const outputs = [
-      { label: "Output 1", pin: 16 },
-      { label: "Output 2", pin: 17 },
-      { label: "Output 3", pin: 18 },
-      { label: "Output 4", pin: 19 },
+    const outputData = [
+      { label: 'Output 1', pin: 16 },
+      { label: 'Output 2', pin: 17 },
+      { label: 'Output 3', pin: 18 },
+      { label: 'Output 4', pin: 19 }
     ];
 
-    const numSeconds = 60;
-    const outputsContainer = document.getElementById("outputs");
+    const channelsContainer = document.getElementById('channels');
 
-    outputs.forEach((output, rowIndex) => {
-      const block = document.createElement("div");
-      block.className = "output-block";
+    outputData.forEach((output, index) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'channel';
 
-      const header = document.createElement("div");
-      header.className = "output-header";
-      header.innerHTML = `
-        <label>Label: <input type="text" value="${output.label}" onchange="outputs[${rowIndex}].label = this.value"></label>
-        <label>Pin: <input type="number" value="${output.pin}" onchange="outputs[${rowIndex}].pin = parseInt(this.value)"></label>
+      wrapper.innerHTML = `
+        <label>Label: <input type="text" value="${output.label}" onchange="outputData[${index}].label = this.value"></label>
+        <label>Pin: <input type="number" value="${output.pin}" onchange="outputData[${index}].pin = parseInt(this.value)"></label>
+        <div class="timeline" id="timeline-${index}"></div>
       `;
 
-      const timeline = document.createElement("div");
-      timeline.className = "timeline";
-      timeline.dataset.index = rowIndex;
-      
-      for (let t = 0; t < numSeconds; t++) {
-        const cell = document.createElement("div");
-        cell.className = "cell";
-        cell.dataset.row = rowIndex;
-        cell.dataset.time = t;
-        cell.onclick = () => cell.classList.toggle("on");
+      channelsContainer.appendChild(wrapper);
+
+      const timeline = wrapper.querySelector('.timeline');
+      for (let i = 0; i < 60; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.output = index;
+        cell.dataset.time = i;
+        cell.onclick = () => cell.classList.toggle('on');
         timeline.appendChild(cell);
       }
-
-      block.appendChild(header);
-      block.appendChild(timeline);
-      outputsContainer.appendChild(block);
     });
 
-    const audio = document.getElementById("audio");
-    document.getElementById("audioUpload").addEventListener("change", function (e) {
+    const audio = document.getElementById('audio');
+    document.getElementById('audioUpload').addEventListener('change', function (e) {
       const file = e.target.files[0];
       if (file) {
         audio.src = URL.createObjectURL(file);
@@ -133,15 +121,13 @@
     });
 
     function playTimeline() {
-      const activeCells = document.querySelectorAll(".cell.on");
-      const timelineData = Array.from(activeCells).map(cell => ({
-        output: parseInt(cell.dataset.row),
-        time: parseInt(cell.dataset.time)
-      }));
-
-      console.log("Previewing:", timelineData);
       audio.currentTime = 0;
       audio.play();
+      console.log('Timeline playback triggered');
+    }
+
+    function updateInputLabel(val) {
+      console.log('Input label updated:', val);
     }
   </script>
 </body>
