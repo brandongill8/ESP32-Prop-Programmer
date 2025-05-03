@@ -23,13 +23,10 @@
       padding: 10px;
     }
     .timeline-wrapper {
-      display: grid;
-      grid-template-columns: 150px 1fr;
       position: relative;
-      width: 100%;
+      width: fit-content;
     }
     .time-ruler {
-      grid-column: 2;
       display: flex;
       color: #aaa;
       font-size: 0.75rem;
@@ -39,7 +36,6 @@
       text-align: center;
     }
     canvas#waveform {
-      grid-column: 2;
       background: #111;
       height: 100px;
       display: block;
@@ -52,18 +48,17 @@
       height: 100%;
       pointer-events: none;
       z-index: 10;
-      left: 150px; /* starts aligned with the waveform */
+      left: 0;
     }
-    .track {
-      display: flex;
-      align-items: center;
-      margin-bottom: 5px;
+    .output-box {
+      border: 1px solid #444;
+      padding: 10px;
+      margin: 8px 0;
+      background: #111;
+      width: fit-content;
     }
     .track-label {
-      width: 150px;
-      text-align: right;
-      padding-right: 10px;
-      font-size: 0.9rem;
+      margin-bottom: 4px;
     }
     .track-timeline {
       position: relative;
@@ -90,11 +85,11 @@
       margin: 10px auto;
       width: 90%;
     }
-    select, input[type="text"] {
+    select, input[type="text"], input[type="number"] {
       background: #222;
       color: white;
       border: 1px solid #555;
-      margin-left: 5px;
+      margin: 5px;
     }
   </style>
 </head>
@@ -114,6 +109,8 @@
     <button onclick="stopTimeline()">Stop</button>
     <button onclick="resetTimeline()">Reset</button>
     <audio id="audio" controls></audio>
+    <br>
+    <label>Timeline Length (sec): <input type="number" id="manualLength" value="60" min="1" onchange="manualTimelineLength(this.value)"></label>
   </div>
 
   <div id="zoom-controls">
@@ -121,15 +118,12 @@
     <button onclick="zoom(10)">+</button>
   </div>
 
-  <div class="editor-container" id="editorContainer">
-    <div class="timeline-wrapper" id="timelineWrapper">
-      <div></div>
-      <div class="time-ruler" id="timeRuler"></div>
-      <div></div>
-      <canvas id="waveform"></canvas>
-      <div id="labels"></div>
-      <div id="tracks"></div>
+  <div class="editor-container">
+    <div class="timeline-wrapper">
       <div class="playhead" id="playhead"></div>
+      <div class="time-ruler" id="timeRuler"></div>
+      <canvas id="waveform"></canvas>
+      <div id="tracks"></div>
     </div>
   </div>
 
@@ -140,6 +134,7 @@
     let pxPerSecond = 50;
     let animationFrame = null;
     let currentBuffer = null;
+    let manualOverride = false;
 
     const outputs = [
       { label: 'Output 1', pin: null, segments: [] },
@@ -152,14 +147,19 @@
     const ctx = waveform.getContext('2d');
     const audio = document.getElementById('audio');
     const tracksDiv = document.getElementById('tracks');
-    const labelsDiv = document.getElementById('labels');
     const playhead = document.getElementById('playhead');
     const inputPinDropdown = document.getElementById('inputPin');
     const ruler = document.getElementById('timeRuler');
+    const manualLengthInput = document.getElementById('manualLength');
 
     function zoom(delta) {
       pxPerSecond = Math.max(10, pxPerSecond + delta);
-      if (audio.duration) setTimelineDuration(audio.duration);
+      setTimelineDuration(numSeconds);
+    }
+
+    function manualTimelineLength(value) {
+      manualOverride = true;
+      setTimelineDuration(parseInt(value));
     }
 
     function setTimelineDuration(seconds) {
@@ -190,50 +190,37 @@
       });
     }
 
-    let inputPin = null;
-    populateDropdown(inputPinDropdown, inputPin);
-    inputPinDropdown.addEventListener('change', (e) => {
-      if (inputPin) usedPins.delete(parseInt(inputPin));
-      inputPin = parseInt(e.target.value);
-      usedPins.add(inputPin);
-      refreshAllDropdowns();
-    });
-
-    function refreshAllDropdowns() {
-      document.querySelectorAll('.pin-select').forEach((dropdown, index) => {
-        const current = outputs[index].pin;
-        populateDropdown(dropdown, current);
-      });
-      populateDropdown(inputPinDropdown, inputPin);
-    }
-
     function drawOutputTracks(width) {
       tracksDiv.innerHTML = '';
-      labelsDiv.innerHTML = '';
       outputs.forEach((output, index) => {
-        const labelWrapper = document.createElement('div');
-        labelWrapper.className = 'track-label';
-        labelWrapper.innerHTML = `<input type="text" value="${output.label}" onchange="outputs[${index}].label = this.value">`;
+        const box = document.createElement('div');
+        box.className = 'output-box';
+
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.value = output.label;
+        labelInput.onchange = () => { output.label = labelInput.value; };
 
         const pinDropdown = document.createElement('select');
-        pinDropdown.className = 'pin-select';
         populateDropdown(pinDropdown, output.pin);
         pinDropdown.addEventListener('change', function () {
-          if (outputs[index].pin) usedPins.delete(outputs[index].pin);
-          outputs[index].pin = parseInt(this.value);
-          usedPins.add(outputs[index].pin);
-          refreshAllDropdowns();
+          if (output.pin) usedPins.delete(output.pin);
+          output.pin = parseInt(this.value);
+          usedPins.add(output.pin);
+          drawOutputTracks(width);
         });
-
-        const labelContainer = document.createElement('div');
-        labelContainer.appendChild(labelWrapper);
-        labelContainer.appendChild(pinDropdown);
-        labelsDiv.appendChild(labelContainer);
 
         const timeline = document.createElement('div');
         timeline.className = 'track-timeline';
         timeline.style.width = `${width}px`;
-        timeline.dataset.index = index;
+
+        output.segments.forEach(seg => {
+          const segDiv = document.createElement('div');
+          segDiv.className = 'segment';
+          segDiv.style.left = `${seg.start * pxPerSecond}px`;
+          segDiv.style.width = `${(seg.end - seg.start) * pxPerSecond}px`;
+          timeline.appendChild(segDiv);
+        });
 
         let startX = null;
         timeline.onmousedown = (e) => { startX = e.offsetX; };
@@ -241,18 +228,16 @@
           if (startX === null) return;
           const x1 = Math.min(startX, e.offsetX);
           const x2 = Math.max(startX, e.offsetX);
-          const seg = document.createElement('div');
-          seg.className = 'segment';
-          seg.style.left = `${x1}px`;
-          seg.style.width = `${x2 - x1}px`;
-          timeline.appendChild(seg);
-          const startTime = Math.round(x1 / pxPerSecond);
-          const endTime = Math.round(x2 / pxPerSecond);
-          outputs[index].segments.push({ start: startTime, end: endTime });
-          startX = null;
+          const start = x1 / pxPerSecond;
+          const end = x2 / pxPerSecond;
+          output.segments.push({ start, end });
+          drawOutputTracks(width);
         };
 
-        tracksDiv.appendChild(timeline);
+        box.appendChild(labelInput);
+        box.appendChild(pinDropdown);
+        box.appendChild(timeline);
+        tracksDiv.appendChild(box);
       });
     }
 
@@ -266,7 +251,12 @@
       reader.onload = function (event) {
         audioCtx.decodeAudioData(event.target.result).then(buffer => {
           currentBuffer = buffer;
-          setTimelineDuration(buffer.duration);
+          if (!manualOverride) {
+            manualLengthInput.value = Math.ceil(buffer.duration);
+            setTimelineDuration(buffer.duration);
+          } else {
+            setTimelineDuration(parseInt(manualLengthInput.value));
+          }
           drawWaveform(buffer);
         });
       };
@@ -307,13 +297,13 @@
     function resetTimeline() {
       stopTimeline();
       audio.currentTime = 0;
-      playhead.style.left = '150px';
+      playhead.style.left = '0px';
     }
 
     function updatePlayhead() {
       animationFrame = requestAnimationFrame(function step() {
         const position = audio.currentTime * pxPerSecond;
-        playhead.style.left = `${150 + position}px`;
+        playhead.style.left = `${position}px`;
         if (!audio.paused && !audio.ended) {
           animationFrame = requestAnimationFrame(step);
         }
