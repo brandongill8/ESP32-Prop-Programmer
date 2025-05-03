@@ -26,20 +26,17 @@
     .channel label {
       margin-right: 10px;
     }
-    .timeline {
-      display: grid;
-      grid-template-columns: repeat(60, 10px);
-      gap: 2px;
-      margin-top: 10px;
-      overflow-x: auto;
-    }
-    .cell {
-      width: 10px;
-      height: 20px;
+    .timeline-track {
+      position: relative;
+      height: 30px;
       background: #333;
-      cursor: pointer;
+      margin-top: 10px;
+      cursor: crosshair;
     }
-    .cell.on {
+    .segment {
+      position: absolute;
+      top: 0;
+      bottom: 0;
       background: lime;
     }
     #controls, #audioSection {
@@ -55,6 +52,13 @@
       color: #fff;
       border: 1px solid #555;
       padding: 2px 6px;
+    }
+    canvas#waveform {
+      display: block;
+      width: 100%;
+      height: 100px;
+      background: #111;
+      margin-bottom: 10px;
     }
   </style>
 </head>
@@ -79,6 +83,7 @@
   </div>
 
   <div id="audioSection">
+    <canvas id="waveform"></canvas>
     <audio id="audio" controls></audio>
   </div>
 
@@ -86,49 +91,93 @@
 
   <script>
     const outputData = [
-      { label: 'Output 1', pin: 16 },
-      { label: 'Output 2', pin: 17 },
-      { label: 'Output 3', pin: 18 },
-      { label: 'Output 4', pin: 19 }
+      { label: 'Output 1', pin: 16, segments: [] },
+      { label: 'Output 2', pin: 17, segments: [] },
+      { label: 'Output 3', pin: 18, segments: [] },
+      { label: 'Output 4', pin: 19, segments: [] }
     ];
 
+    const numSeconds = 60;
+    const pxPerSecond = 10;
+    const trackWidth = numSeconds * pxPerSecond;
     const channelsContainer = document.getElementById('channels');
 
     outputData.forEach((output, index) => {
       const wrapper = document.createElement('div');
       wrapper.className = 'channel';
 
-      wrapper.innerHTML = `
-        <label>Label: <input type="text" value="${output.label}" onchange="outputData[${index}].label = this.value"></label>
-        <label>Pin: <input type="number" value="${output.pin}" onchange="outputData[${index}].pin = parseInt(this.value)"></label>
-        <div class="timeline" id="timeline-${index}"></div>
-      `;
+      const labelInput = `<label>Label: <input type="text" value="${output.label}" onchange="outputData[${index}].label = this.value"></label>`;
+      const pinInput = `<label>Pin: <input type="number" value="${output.pin}" onchange="outputData[${index}].pin = parseInt(this.value)"></label>`;
 
+      const track = document.createElement('div');
+      track.className = 'timeline-track';
+      track.style.width = `${trackWidth}px`;
+      track.dataset.index = index;
+
+      let startX = null;
+      track.onmousedown = (e) => {
+        const rect = track.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+      };
+      track.onmouseup = (e) => {
+        if (startX === null) return;
+        const rect = track.getBoundingClientRect();
+        const endX = e.clientX - rect.left;
+        const [x1, x2] = [startX, endX].sort((a, b) => a - b);
+        const seg = document.createElement('div');
+        seg.className = 'segment';
+        seg.style.left = `${x1}px`;
+        seg.style.width = `${x2 - x1}px`;
+        track.appendChild(seg);
+
+        const startTime = Math.round(x1 / pxPerSecond);
+        const endTime = Math.round(x2 / pxPerSecond);
+        outputData[index].segments.push({ start: startTime, end: endTime });
+        startX = null;
+      };
+
+      wrapper.innerHTML = labelInput + pinInput;
+      wrapper.appendChild(track);
       channelsContainer.appendChild(wrapper);
-
-      const timeline = wrapper.querySelector('.timeline');
-      for (let i = 0; i < 60; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.dataset.output = index;
-        cell.dataset.time = i;
-        cell.onclick = () => cell.classList.toggle('on');
-        timeline.appendChild(cell);
-      }
     });
 
     const audio = document.getElementById('audio');
+    const waveform = document.getElementById('waveform');
+    const ctx = waveform.getContext('2d');
+
     document.getElementById('audioUpload').addEventListener('change', function (e) {
       const file = e.target.files[0];
-      if (file) {
-        audio.src = URL.createObjectURL(file);
-      }
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      audio.src = url;
+      drawWaveform(file);
     });
+
+    function drawWaveform(file) {
+      const audioCtx = new AudioContext();
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        audioCtx.decodeAudioData(e.target.result).then(buffer => {
+          const rawData = buffer.getChannelData(0);
+          const step = Math.floor(rawData.length / waveform.width);
+          const height = waveform.height;
+          ctx.clearRect(0, 0, waveform.width, height);
+          for (let i = 0; i < waveform.width; i++) {
+            const slice = rawData.slice(i * step, (i + 1) * step);
+            const max = Math.max(...slice.map(Math.abs));
+            const y = max * height;
+            ctx.fillStyle = '#0f0';
+            ctx.fillRect(i, (height - y) / 2, 1, y);
+          }
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    }
 
     function playTimeline() {
       audio.currentTime = 0;
       audio.play();
-      console.log('Timeline playback triggered');
+      console.log('Scare track playback started.');
     }
 
     function updateInputLabel(val) {
