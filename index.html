@@ -69,8 +69,13 @@
   </div>
 
   <div id="controls">
-    <input type="file" id="audioUpload" accept="audio/*">
-    <button onclick="playTimeline()">Play Timeline</button>
+    <label>Background Track:
+      <input type="file" id="bgUpload" accept="audio/*">
+    </label>
+    <label>Scare Track:
+      <input type="file" id="audioUpload" accept="audio/*">
+    </label>
+    <button onclick="playTimeline()">Play Scare Preview</button>
   </div>
 
   <div id="audioSection">
