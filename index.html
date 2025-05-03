@@ -54,7 +54,7 @@
       margin-bottom: 5px;
     }
     .track-label {
-      width: 100px;
+      width: 150px;
       text-align: right;
       padding-right: 10px;
       font-size: 0.9rem;
@@ -81,6 +81,12 @@
       margin: 10px auto;
       width: 90%;
     }
+    select {
+      background: #222;
+      color: white;
+      border: 1px solid #555;
+      margin-left: 5px;
+    }
   </style>
 </head>
 <body>
@@ -89,6 +95,10 @@
   </header>
 
   <div id="controls">
+    <label>Trigger Input Pin:
+      <select id="inputPin"></select>
+    </label>
+    <br>
     <label>Background Track: <input type="file" id="bgUpload" accept="audio/*"></label>
     <label>Scare Track: <input type="file" id="audioUpload" accept="audio/*"></label>
     <button onclick="playTimeline()">Play Preview</button>
@@ -107,11 +117,14 @@
   </div>
 
   <script>
+    const gpioOptions = [4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33];
+    let usedPins = new Set();
+
     const outputs = [
-      { label: 'Output 1', segments: [] },
-      { label: 'Output 2', segments: [] },
-      { label: 'Output 3', segments: [] },
-      { label: 'Output 4', segments: [] }
+      { label: 'Output 1', pin: null, segments: [] },
+      { label: 'Output 2', pin: null, segments: [] },
+      { label: 'Output 3', pin: null, segments: [] },
+      { label: 'Output 4', pin: null, segments: [] }
     ];
 
     const waveform = document.getElementById('waveform');
@@ -119,12 +132,33 @@
     const audio = document.getElementById('audio');
     const tracksDiv = document.getElementById('tracks');
     const playhead = document.getElementById('playhead');
-    const editorContainer = document.getElementById('editorContainer');
-
+    const inputPinDropdown = document.getElementById('inputPin');
     const numSeconds = 60;
     const pxPerSecond = 50;
     const waveformWidth = numSeconds * pxPerSecond;
     waveform.width = waveformWidth;
+
+    function populateDropdown(dropdown, selectedPin) {
+      dropdown.innerHTML = '<option value="">-- Select Pin --</option>';
+      gpioOptions.forEach(pin => {
+        const option = document.createElement('option');
+        option.value = pin;
+        option.textContent = `GPIO ${pin}`;
+        option.disabled = usedPins.has(pin) && pin !== selectedPin;
+        if (pin === selectedPin) option.selected = true;
+        dropdown.appendChild(option);
+      });
+    }
+
+    // Setup input pin dropdown
+    let inputPin = null;
+    populateDropdown(inputPinDropdown, inputPin);
+    inputPinDropdown.addEventListener('change', (e) => {
+      if (inputPin) usedPins.delete(parseInt(inputPin));
+      inputPin = parseInt(e.target.value);
+      usedPins.add(inputPin);
+      refreshAllDropdowns();
+    });
 
     // Build time ruler
     const ruler = document.getElementById('timeRuler');
@@ -135,7 +169,14 @@
       ruler.appendChild(tick);
     }
 
-    // Draw output tracks
+    function refreshAllDropdowns() {
+      document.querySelectorAll('.pin-select').forEach((dropdown, index) => {
+        const current = outputs[index].pin;
+        populateDropdown(dropdown, current);
+      });
+      populateDropdown(inputPinDropdown, inputPin);
+    }
+
     outputs.forEach((output, index) => {
       const row = document.createElement('div');
       row.className = 'track';
@@ -143,6 +184,16 @@
       const label = document.createElement('div');
       label.className = 'track-label';
       label.textContent = output.label;
+
+      const pinDropdown = document.createElement('select');
+      pinDropdown.className = 'pin-select';
+      populateDropdown(pinDropdown, null);
+      pinDropdown.addEventListener('change', function () {
+        if (outputs[index].pin) usedPins.delete(outputs[index].pin);
+        outputs[index].pin = parseInt(this.value);
+        usedPins.add(outputs[index].pin);
+        refreshAllDropdowns();
+      });
 
       const timeline = document.createElement('div');
       timeline.className = 'track-timeline';
@@ -169,11 +220,11 @@
       };
 
       row.appendChild(label);
+      row.appendChild(pinDropdown);
       row.appendChild(timeline);
       tracksDiv.appendChild(row);
     });
 
-    // Audio + waveform logic
     document.getElementById('audioUpload').addEventListener('change', function (e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -212,21 +263,18 @@
     function playTimeline() {
       audio.currentTime = 0;
       audio.play();
+      updatePlayhead();
+    }
 
-      const start = performance.now();
-      const totalDuration = audio.duration || 60;
-
-      const update = (now) => {
-        const elapsed = (now - start) / 1000;
-        const position = elapsed * pxPerSecond;
+    function updatePlayhead() {
+      const step = () => {
+        const position = audio.currentTime * pxPerSecond;
         playhead.style.left = `${position}px`;
-
         if (!audio.paused && !audio.ended) {
-          requestAnimationFrame(update);
+          requestAnimationFrame(step);
         }
       };
-
-      requestAnimationFrame(update);
+      requestAnimationFrame(step);
     }
   </script>
 </body>
