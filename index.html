@@ -23,11 +23,13 @@
       padding: 10px;
     }
     .timeline-wrapper {
-      display: block;
+      display: grid;
+      grid-template-columns: 150px 1fr;
       position: relative;
-      min-width: 100%;
+      width: 100%;
     }
     .time-ruler {
+      grid-column: 2;
       display: flex;
       color: #aaa;
       font-size: 0.75rem;
@@ -37,8 +39,10 @@
       text-align: center;
     }
     canvas#waveform {
-      display: block;
+      grid-column: 2;
       background: #111;
+      height: 100px;
+      display: block;
     }
     .playhead {
       position: absolute;
@@ -62,7 +66,6 @@
     }
     .track-timeline {
       position: relative;
-      flex: 1;
       height: 30px;
       background: #333;
       cursor: crosshair;
@@ -76,6 +79,10 @@
     #controls {
       text-align: center;
       padding: 10px;
+    }
+    #zoom-controls {
+      text-align: center;
+      margin-bottom: 10px;
     }
     #audio {
       display: block;
@@ -103,14 +110,24 @@
     <label>Background Track: <input type="file" id="bgUpload" accept="audio/*"></label>
     <label>Scare Track: <input type="file" id="audioUpload" accept="audio/*"></label>
     <button onclick="playTimeline()">Play</button>
+    <button onclick="stopTimeline()">Stop</button>
+    <button onclick="resetTimeline()">Reset</button>
     <audio id="audio" controls></audio>
   </div>
 
+  <div id="zoom-controls">
+    <button onclick="zoom(-10)">-</button>
+    <button onclick="zoom(10)">+</button>
+  </div>
+
   <div class="editor-container" id="editorContainer">
+    <div class="playhead" id="playhead"></div>
     <div class="timeline-wrapper" id="timelineWrapper">
-      <div class="playhead" id="playhead"></div>
+      <div></div>
       <div class="time-ruler" id="timeRuler"></div>
-      <canvas id="waveform" height="100"></canvas>
+      <div></div>
+      <canvas id="waveform"></canvas>
+      <div id="labels"></div>
       <div id="tracks"></div>
     </div>
   </div>
@@ -120,6 +137,7 @@
     let usedPins = new Set();
     let numSeconds = 60;
     let pxPerSecond = 50;
+    let animationFrame = null;
 
     const outputs = [
       { label: 'Output 1', pin: null, segments: [] },
@@ -132,10 +150,15 @@
     const ctx = waveform.getContext('2d');
     const audio = document.getElementById('audio');
     const tracksDiv = document.getElementById('tracks');
+    const labelsDiv = document.getElementById('labels');
     const playhead = document.getElementById('playhead');
     const inputPinDropdown = document.getElementById('inputPin');
     const ruler = document.getElementById('timeRuler');
-    const timelineWrapper = document.getElementById('timelineWrapper');
+
+    function zoom(delta) {
+      pxPerSecond = Math.max(10, pxPerSecond + delta);
+      if (audio.duration) setTimelineDuration(audio.duration);
+    }
 
     function setTimelineDuration(seconds) {
       numSeconds = seconds;
@@ -149,7 +172,6 @@
         tick.style.width = `${pxPerSecond * 5}px`;
         ruler.appendChild(tick);
       }
-      tracksDiv.innerHTML = '';
       drawOutputTracks(width);
     }
 
@@ -183,10 +205,9 @@
     }
 
     function drawOutputTracks(width) {
+      tracksDiv.innerHTML = '';
+      labelsDiv.innerHTML = '';
       outputs.forEach((output, index) => {
-        const row = document.createElement('div');
-        row.className = 'track';
-
         const labelWrapper = document.createElement('div');
         labelWrapper.className = 'track-label';
         labelWrapper.innerHTML = `<input type="text" value="${output.label}" onchange="outputs[${index}].label = this.value">`;
@@ -201,15 +222,18 @@
           refreshAllDropdowns();
         });
 
+        const labelContainer = document.createElement('div');
+        labelContainer.appendChild(labelWrapper);
+        labelContainer.appendChild(pinDropdown);
+        labelsDiv.appendChild(labelContainer);
+
         const timeline = document.createElement('div');
         timeline.className = 'track-timeline';
         timeline.style.width = `${width}px`;
         timeline.dataset.index = index;
 
         let startX = null;
-        timeline.onmousedown = (e) => {
-          startX = e.offsetX;
-        };
+        timeline.onmousedown = (e) => { startX = e.offsetX; };
         timeline.onmouseup = (e) => {
           if (startX === null) return;
           const x1 = Math.min(startX, e.offsetX);
@@ -225,10 +249,7 @@
           startX = null;
         };
 
-        row.appendChild(labelWrapper);
-        row.appendChild(pinDropdown);
-        row.appendChild(timeline);
-        tracksDiv.appendChild(row);
+        tracksDiv.appendChild(timeline);
       });
     }
 
@@ -274,15 +295,25 @@
       updatePlayhead();
     }
 
+    function stopTimeline() {
+      audio.pause();
+      cancelAnimationFrame(animationFrame);
+    }
+
+    function resetTimeline() {
+      stopTimeline();
+      audio.currentTime = 0;
+      playhead.style.left = '0px';
+    }
+
     function updatePlayhead() {
-      const step = () => {
+      animationFrame = requestAnimationFrame(function step() {
         const position = audio.currentTime * pxPerSecond;
         playhead.style.left = `${position}px`;
         if (!audio.paused && !audio.ended) {
-          requestAnimationFrame(step);
+          animationFrame = requestAnimationFrame(step);
         }
-      };
-      requestAnimationFrame(step);
+      });
     }
   </script>
 </body>
